@@ -9,7 +9,7 @@ This document outlines the setup and process for automating the transfer of file
 ## 🧩 Basic Cycle
 
 <!-- Practice\Copy Activity\images\CopyActivity.png -->
-![Basic Cycle Overview](./Copy Activity/images/CopyActivity.png)
+![Basic Cycle Overview](Practice/Copy Activity/images/CopyActivity.png)
 ### 1. Azure Function
 - **Purpose**: Generates files and stores them on the SFTP server.
 - **Trigger**: Timer-based or HTTP/event trigger.
