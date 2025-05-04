@@ -8,38 +8,52 @@ This document outlines the setup and process for automating the transfer of file
 
 ## 🧩 Basic Cycle
 
-<!-- Practice\Copy Activity\images\CopyActivity.png -->
 ![Basic Cycle Overview](images/CopyActivity.png)
 ### 1. Azure Function
 - **Purpose**: Generates files and stores them on the SFTP server.
 - **Trigger**: Timer-based or HTTP/event trigger.
-- **Output Format**: CSV/JSON/XML
-- **Output Path**: `/outgoing-data/`
+- **Output Format**: CSV
+- **Output Path**: `raw/outgoing-data/`
+
 
 ### 2. SFTP Server
-- **Directory**: `/outgoing-data/`
+- **Directory**: `raw/outgoing-data/`
 - **Access**: Secured via SSH with credentials managed in **Azure Key Vault**
 - **Lifecycle**: Files are removed after being successfully copied to Azure Blob Storage
 
 ### 3. Azure Blob Storage
 - **Container**: `raw-data`
 - **Access**: Secured via **Managed Identity** or **Key Vault**
+- **Output Format**: parquet
 - **Usage**: Acts as the raw layer in the data lake for downstream processing
 
 ---
 
 ## 🔗 Linked Services Configuration
 
+![SFTP Linkedservices](images/SFTP_Configuration.png)
 ### 🔹 SFTP Linked Service
 - **Type**: SFTP
 - **Authentication**: Username & SSH key stored in Azure Key Vault
 - **Host**: `sftp.partnerdomain.com`
 - **Port**: `22`
 
+![SFTP Datasets](images/SFTP_Dataset_configuration.png)
+### 🔹 SFTP Datasets
+- **Type**: SFTP
+- **Path**: Configured the dynamic path for copy activity for Source Path 
+
+
+![Blob Storage Linkedservices](images/Azure_blob_storage_configuraiton.png)
 ### 🔹 Azure Blob Storage Linked Service
 - **Type**: Azure Blob Storage
 - **Authentication**: Managed Identity or Key Vault
 - **Container**: `raw-data`
+
+![Blob Storage Datasets](images/Azure_blob_storage_dataset.png)
+### 🔹 Azure Blob Storage Linked Service
+- **Type**: Azure Blob Storage
+- **Path**: Configured the dynamic path for copy activity for destination path
 
 ---
 
@@ -47,73 +61,20 @@ This document outlines the setup and process for automating the transfer of file
 
 ### 🔸 Activities
 
-1. #### Lookup New Files
+![Pipeline Activity](images/Copy_Acitvity_Pipeline.png)
+1. #### Azure Function Script to Dump In SFTP
    - **Type**: `Lookup`
-   - **Description**: Retrieves list of files in `/outgoing-data/` directory on SFTP
+   - **Description**: Retrieves list of files in `raw/outgoing-data/` directory on SFTP
    - **Output**: Array of file paths
 
-2. #### ForEach (Iterates over files)
-   For each file found by the Lookup activity:
-
+2. #### Azure Copy Activity
    - **Copy Data**
-     - **Source**: SFTP `/outgoing-data/{filename}`
-     - **Sink**: Azure Blob Storage `raw-data/{filename}`
-     - **Options**: Binary copy, preserve file name, retry on failure
+     - **Source**: SFTP `raw/outgoing-data/{filename}`
+     - **Sink**: Azure Blob Storage `piluspi-container/raw-data/{filename}`
      - **Retry Policy**: 3 attempts
 
+3. #### Delete Activity for old Dump in SFTP
    - **Delete File (Post Copy)**
      - **Type**: `Delete`
      - **Condition**: Executed only if the copy succeeds
-     - **Target**: SFTP `/outgoing-data/{filename}`
-
----
-
-## ✅ Monitoring & Alerts
-
-- **Pipeline Monitoring**: Handled via ADF Monitor UI
-- **Logging**: Enabled through integration with **Azure Log Analytics**
-- **Alerts**: Configured via **Azure Monitor** for failures and retry exhaustion
-
----
-
-## 🔐 Security
-
-- **Secrets Management**: All credentials and keys are stored securely in **Azure Key Vault**
-- **Access Control**: Role-based access to ADF and Blob Storage via **Azure RBAC**
-- **Audit Logs**: Available in Azure Activity Logs and Log Analytics
-
----
-
-## 🕒 Scheduling
-
-- **Trigger Type**: `Schedule Trigger`
-- **Frequency**: Daily at `01:00 UTC`
-- **Dependency Check**: Ensures Azure Function completes file generation before pipeline start
-
----
-
-## 🧹 Cleanup & Retention
-
-- **SFTP Cleanup**: Files are deleted from SFTP after successful copy
-- **Blob Retention**: Files retained in Azure Blob Storage as per data governance (e.g., 90 days)
-- **Optional**: Blob lifecycle rules for archiving or deletion
-
----
-
-## 📌 Additional Notes
-
-- Ensure consistent naming and timestamps to avoid duplicate copies
-- Optionally integrate with a metadata store (e.g., Azure SQL DB) to track processed files
-- Blob access tiers (Hot/Cool/Archive) can be configured based on frequency of access
-
----
-
-## 📁 Folder Structure
-
-```text
-SFTP
-└── /outgoing-data/
-    ├── report_20250501.csv
-    ├── report_20250502.csv
-    └── ...
-![ADF Pipeline Overview](./images/adf_sftp_to_blob.png)
+     - **Target**: SFTP `raw/outgoing-data/{filename}`
